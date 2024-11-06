@@ -3,7 +3,8 @@ const { app, requestTimestamps, cleanOldTimestamps } = require("../app");
 
 describe("GET /current-time", () => {
   beforeEach(() => {
-    requestTimestamps.length = 0; // Clear timestamps before each test
+    // Clear timestamps by reassigning an empty array
+    while (requestTimestamps.length) requestTimestamps.pop();
   });
 
   it("should return the current server time", async () => {
@@ -23,11 +24,12 @@ describe("GET /current-time", () => {
 
 describe("GET /request-count", () => {
   beforeEach(() => {
-    requestTimestamps.length = 0; // Clear timestamps before each test
+    // Clear timestamps by reassigning an empty array
+    while (requestTimestamps.length) requestTimestamps.pop();
   });
 
   it("should return the count of requests in the last 10 minutes", async () => {
-    requestTimestamps.push(Date.now()); // Mock a request timestamp
+    requestTimestamps.push(Date.now());
     const response = await request(app).get("/request-count");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ requestCount: 1 });
