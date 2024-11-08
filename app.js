@@ -1,6 +1,7 @@
 const express = require("express");
 const winston = require("winston");
 const morgan = require("morgan");
+const client = require("prom-client");
 const app = express();
 
 // Set up Winston logger
@@ -46,6 +47,50 @@ app.get("/request-count", (req, res) => {
   cleanOldTimestamps();
   logger.info("GET /request-count - Request count retrieved");
   res.json({ requestCount: requestTimestamps.length });
+});
+
+// Create a Registry to register the metrics
+const register = new client.Registry();
+
+// Counter for tracking the number of requests
+const requestCounter = new client.Counter({
+  name: "http_requests_total",
+  help: "Total number of HTTP requests",
+  labelNames: ["method", "route", "status"],
+});
+
+// Histogram for response time
+const responseTimeHistogram = new client.Histogram({
+  name: "http_response_time_seconds",
+  help: "Response time in seconds",
+  labelNames: ["method", "route", "status"],
+});
+
+// Register the metrics with the Registry
+register.registerMetric(requestCounter);
+register.registerMetric(responseTimeHistogram);
+
+// Collect default metrics (like memory usage, etc.)
+client.collectDefaultMetrics({ register });
+
+// Middleware for collecting metrics for each request
+app.use((req, res, next) => {
+  const end = responseTimeHistogram.startTimer();
+  res.on("finish", () => {
+    requestCounter.inc({
+      method: req.method,
+      route: req.path,
+      status: res.statusCode,
+    });
+    end({ method: req.method, route: req.path, status: res.statusCode });
+  });
+  next();
+});
+
+// Expose metrics endpoint
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.send(await register.metrics());
 });
 
 module.exports = { app, requestTimestamps, cleanOldTimestamps };
