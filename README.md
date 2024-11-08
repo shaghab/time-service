@@ -62,6 +62,11 @@ npm test
 - **tests/app.test.js**: Unit tests for the endpoints.
 - **.gitignore**: Specifies files and folders to ignore in the repo.
 
+## Code Generation
+
+This code was generated using ChatGPT. The original prompt can be found at:
+[https://chatgpt.com/c/672aeb13-4f54-8004-b72b-0a925c59b807](https://chatgpt.com/c/672aeb13-4f54-8004-b72b-0a925c59b807)
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
