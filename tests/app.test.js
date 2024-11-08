@@ -3,7 +3,7 @@ const { app, requestTimestamps, cleanOldTimestamps } = require("../app");
 
 describe("GET /current-time", () => {
   beforeEach(() => {
-    // Clear timestamps by reassigning an empty array
+    // Clear timestamps by emptying the array
     while (requestTimestamps.length) requestTimestamps.pop();
   });
 
@@ -24,7 +24,7 @@ describe("GET /current-time", () => {
 
 describe("GET /request-count", () => {
   beforeEach(() => {
-    // Clear timestamps by reassigning an empty array
+    // Clear timestamps by emptying the array
     while (requestTimestamps.length) requestTimestamps.pop();
   });
 
@@ -46,5 +46,17 @@ describe("GET /request-count", () => {
     const response = await request(app).get("/request-count");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ requestCount: 1 });
+  });
+});
+
+describe("GET /metrics", () => {
+  it("should return metrics in Prometheus format", async () => {
+    const response = await request(app).get("/metrics");
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    expect(response.text).toMatch(
+      /# HELP http_requests_total Total number of HTTP requests/
+    );
+    expect(response.text).toMatch(/# TYPE http_requests_total counter/);
   });
 });
