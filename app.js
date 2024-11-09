@@ -2,6 +2,7 @@ const express = require("express");
 const winston = require("winston");
 const morgan = require("morgan");
 const client = require("prom-client");
+const redis = require("redis");
 const app = express();
 
 // Set up Winston logger
@@ -24,29 +25,41 @@ app.use(
   })
 );
 
-// Initialize a counter object to track request timestamps
-let requestTimestamps = [];
+// Create Redis client and connect
+const redisClient = redis.createClient();
+redisClient
+  .connect()
+  .catch((err) => console.error("Redis connection error:", err));
 
 // Middleware to clean up timestamps older than 10 minutes
-const cleanOldTimestamps = () => {
+const cleanOldTimestamps = async () => {
   const now = Date.now();
-  requestTimestamps = requestTimestamps.filter(
-    (timestamp) => now - timestamp < 10 * 60 * 1000
-  );
+  const timestamps = await redisClient.lRange("timestamps", 0, -1);
+  const filteredTimestamps = timestamps
+    .map(Number)
+    .filter((timestamp) => now - timestamp < 10 * 60 * 1000);
+
+  // Clear the list and add filtered timestamps back
+  await redisClient.del("timestamps");
+  for (const timestamp of filteredTimestamps) {
+    await redisClient.rPush("timestamps", String(timestamp));
+  }
 };
 
 // Endpoint to get the current server time
-app.get("/current-time", (req, res) => {
-  requestTimestamps.push(Date.now());
+app.get("/current-time", async (req, res) => {
+  const currentTime = Date.now();
+  await redisClient.rPush("timestamps", String(currentTime)); // Ensure it's a string
   logger.info("GET /current-time - Current server time retrieved");
-  res.json({ currentTime: new Date().toISOString() });
+  res.json({ currentTime: new Date(currentTime).toISOString() });
 });
 
 // Endpoint to get the counter of requests in the last 10 minutes
-app.get("/request-count", (req, res) => {
-  cleanOldTimestamps();
+app.get("/request-count", async (req, res) => {
+  await cleanOldTimestamps();
+  const timestamps = await redisClient.lRange("timestamps", 0, -1);
   logger.info("GET /request-count - Request count retrieved");
-  res.json({ requestCount: requestTimestamps.length });
+  res.json({ requestCount: timestamps.length });
 });
 
 // Create a Registry to register the metrics
@@ -93,4 +106,4 @@ app.get("/metrics", async (req, res) => {
   res.send(await register.metrics());
 });
 
-module.exports = { app, requestTimestamps, cleanOldTimestamps };
+module.exports = { app, cleanOldTimestamps };

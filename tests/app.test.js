@@ -1,10 +1,24 @@
 const request = require("supertest");
-const { app, requestTimestamps, cleanOldTimestamps } = require("../app");
+const { app, cleanOldTimestamps } = require("../app");
+const redis = require("redis");
+
+let redisClient;
+
+beforeAll(async () => {
+  // Create and connect the Redis client for testing
+  redisClient = redis.createClient();
+  await redisClient.connect();
+});
+
+afterAll(async () => {
+  // Close the Redis client after tests
+  await redisClient.quit();
+});
 
 describe("GET /current-time", () => {
-  beforeEach(() => {
-    // Clear timestamps by emptying the array
-    while (requestTimestamps.length) requestTimestamps.pop();
+  beforeEach(async () => {
+    // Clear the 'timestamps' list in Redis before each test
+    await redisClient.del("timestamps");
   });
 
   it("should return the current server time", async () => {
@@ -16,33 +30,46 @@ describe("GET /current-time", () => {
     );
   });
 
-  it("should add a timestamp to requestTimestamps", async () => {
+  it("should add a timestamp to Redis", async () => {
     await request(app).get("/current-time");
-    expect(requestTimestamps.length).toBe(1);
+    const timestamps = await redisClient.lRange("timestamps", 0, -1);
+    expect(timestamps.length).toBe(1);
   });
 });
 
 describe("GET /request-count", () => {
-  beforeEach(() => {
-    // Clear timestamps by emptying the array
-    while (requestTimestamps.length) requestTimestamps.pop();
+  beforeEach(async () => {
+    // Clear the 'timestamps' list in Redis before each test
+    await redisClient.del("timestamps");
   });
 
   it("should return the count of requests in the last 10 minutes", async () => {
-    requestTimestamps.push(Date.now());
+    await redisClient.rPush("timestamps", String(Date.now()));
     const response = await request(app).get("/request-count");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ requestCount: 1 });
   });
 
   it("should only count requests from the last 10 minutes", async () => {
-    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-    const elevenMinutesAgo = Date.now() - 11 * 60 * 1000;
+    //const tenMinutesAgo = String(Date.now() - 10 * 60 * 1000);
+    const nineMinutesAgo = String(Date.now() - 9 * 60 * 1000); // Safely within the 10-minute window
+    const elevenMinutesAgo = String(Date.now() - 11 * 60 * 1000);
 
-    requestTimestamps.push(tenMinutesAgo); // Should be counted
-    requestTimestamps.push(elevenMinutesAgo); // Should be filtered out
+    await redisClient.rPush("timestamps", nineMinutesAgo); // Should be counted
+    await redisClient.rPush("timestamps", elevenMinutesAgo); // Should be filtered out
 
-    cleanOldTimestamps();
+    console.log(
+      "Timestamps before cleaning:",
+      await redisClient.lRange("timestamps", 0, -1)
+    );
+
+    await cleanOldTimestamps(); // Ensure old timestamps are removed
+
+    console.log(
+      "Timestamps after cleaning:",
+      await redisClient.lRange("timestamps", 0, -1)
+    );
+
     const response = await request(app).get("/request-count");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ requestCount: 1 });
